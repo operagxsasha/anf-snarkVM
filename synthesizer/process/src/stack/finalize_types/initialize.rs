@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use indexmap::IndexSet;
 use super::*;
 use crate::RegisterTypes;
+use indexmap::IndexSet;
 use synthesizer_program::{
     Await,
     Branch,
@@ -66,16 +66,12 @@ impl<N: Network> FinalizeTypes<N> {
                     FinalizeType::Future(locator) => locator,
                     FinalizeType::Plaintext(..) => bail!("Expected a future in '{await_}'"),
                 };
-                    assert!(input_futures.remove(&(await_.register(), locator)));
+                assert!(input_futures.remove(&(await_.register(), locator)));
             }
         }
 
         // Check that all the input futures were consumed.
-        ensure!(
-            input_futures.is_empty(),
-            "Futures in finalize '{}' were not all awaited.",
-            finalize.name()
-        );
+        ensure!(input_futures.is_empty(), "Futures in finalize '{}' were not all awaited.", finalize.name());
 
         Ok(finalize_types)
     }
