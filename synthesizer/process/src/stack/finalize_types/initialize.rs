@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use indexmap::IndexSet;
 use super::*;
 use crate::RegisterTypes;
 use synthesizer_program::{
@@ -39,43 +40,40 @@ impl<N: Network> FinalizeTypes<N> {
         // Initialize a map of registers to their types.
         let mut finalize_types = Self { inputs: IndexMap::new(), destinations: IndexMap::new() };
 
-        // Initialize a list of input futures.
-        let mut input_futures = Vec::new();
+        // Initialize a set of input futures.
+        let mut input_futures: IndexSet<(&Register<N>, Locator<N>)> = IndexSet::new();
 
         // Step 1. Check the inputs are well-formed. Store the input futures.
         for input in finalize.inputs() {
             // Check the input register type.
             finalize_types.check_input(stack, input.register(), input.finalize_type())?;
 
-            // If the input is a future, add it to the list of input futures.
+            // If the input is a future, add it to the set of input futures.
             if let FinalizeType::Future(locator) = input.finalize_type() {
-                input_futures.push((input.register(), *locator));
+                input_futures.insert((input.register(), *locator));
             }
         }
 
-        // Initialize a list of consumed futures.
-        let mut consumed_futures = Vec::new();
-
-        // Step 2. Check the commands are well-formed. Store the futures consumed by the `await` commands.
+        // Step 2. Check the commands are well-formed. Make sure all the input futures are awaited.
         for command in finalize.commands() {
             // Check the command opcode, operands, and destinations.
             finalize_types.check_command(stack, finalize, command)?;
 
-            // If the command is an `await`, add the future to the list of consumed futures.
+            // If the command is an `await`, remove the future from the set of futures to be awaited.
             if let Command::Await(await_) = command {
                 // Note: `check_command` ensures that the register is a future. This is an additional check.
                 let locator = match finalize_types.get_type(stack, await_.register())? {
                     FinalizeType::Future(locator) => locator,
                     FinalizeType::Plaintext(..) => bail!("Expected a future in '{await_}'"),
                 };
-                consumed_futures.push((await_.register(), locator));
+                    assert!(input_futures.remove(&(await_.register(), locator)));
             }
         }
 
-        // Check that the input futures are consumed in the order they are passed in.
+        // Check that all the input futures were consumed.
         ensure!(
-            input_futures == consumed_futures,
-            "Futures in finalize '{}' are not awaited in the order they are passed in.",
+            input_futures.is_empty(),
+            "Futures in finalize '{}' were not all awaited.",
             finalize.name()
         );
 
